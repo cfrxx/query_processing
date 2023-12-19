@@ -28,7 +28,7 @@ public class QueryProcessDemoV1_6 {
     public static void main(String[] args) throws Exception {
         // TODO 1.创建执行环境
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-        env.setParallelism(8);
+        env.setParallelism(1);
 
         // TODO 2.读取数据
         // TODO 2.1 customer

@@ -31,6 +31,7 @@ public class NCandOrderImpl extends CoProcessFunction<NationJoinCustomerRows, Or
     // 计数器 count s(t)
     MapState<Integer, Integer> orderCounter;
 
+    // TODO 2 初始化state
     @Override
     public void open(Configuration parameters) throws Exception {
         super.open(parameters);
@@ -42,11 +43,13 @@ public class NCandOrderImpl extends CoProcessFunction<NationJoinCustomerRows, Or
         orderCounter = getRuntimeContext().getMapState(new MapStateDescriptor<Integer, Integer>("orderCounter", Types.INT, Types.INT));
     }
 
+    // TODO 3 处理child流
     @Override
     public void processElement1(NationJoinCustomerRows nationJoinCustomerValue, CoProcessFunction<NationJoinCustomerRows, Order, NationJoinCustomerJoinOrderRows>.Context context, Collector<NationJoinCustomerJoinOrderRows> collector) throws Exception {
         Integer custKey = nationJoinCustomerValue.getC_custKey();
+        String childFlag = nationJoinCustomerValue.getFlag();
 
-        // 更新I(L(R)), 如果是insert, 则 input 进 nationIL, 否则，先remove再input
+        // TODO 3.1 更新 I(L(R)), 如果是insert, 则 input 进 nationIL, 否则，先remove再input
         if (nationJoinCustomerRows.contains(custKey)){
             nationJoinCustomerRows.remove(custKey);
             nationJoinCustomerRows.put(custKey, nationJoinCustomerValue);
@@ -55,11 +58,12 @@ public class NCandOrderImpl extends CoProcessFunction<NationJoinCustomerRows, Or
         }
         //System.out.println(custKey + " : " + nationJoinCustomerRows.get(nationKey));
 
-        // nationJoinCustomerValue保存后，应也更新其parent relation Order的状态
-        // 更新counter s(t), 利用I(R, Rc)查找 order中对应的元组
+        // TODO 3.2 来了新数据，应同步更新 parent relation的 counter和 I(L(R)), 利用I(R, Rc)查找 parent 中对应的元组
         List<Tuple> orderTuples = orderIRRc.get(custKey);
         if (orderTuples != null) {
             for (Tuple tuple : orderTuples) {
+
+                // TODO 3.2.1 更新counter s(t), 利用I(R, Rc)查找 order中对应的元组
                 Integer key = tuple.getField(0);
                 Integer num = orderCounter.get(key);
                 // 不区分Insert delete, 尝试正常更新counter
@@ -69,7 +73,7 @@ public class NCandOrderImpl extends CoProcessFunction<NationJoinCustomerRows, Or
                     //System.out.println(key + " : " + orderCounter.get(key));
                 }
 
-                // 正常更新customer的I(L(R))
+                // TODO 3.2.2 更新 parent 的I(L(R))
                 Integer newNum = orderCounter.get(key);
                 if (orderIL.contains(key)) {
                     orderIL.remove(key);
@@ -81,36 +85,25 @@ public class NCandOrderImpl extends CoProcessFunction<NationJoinCustomerRows, Or
                 }
                 // System.out.println(key+ " : "+orderCounter.get(key));
 
+                // TODO 3.2.3 parent JOIN child using I(R, Rc)
+                Order parentValue = orderIL.get(key);
+                String parentFlag = parentValue.getFlag();
+                String flag = (childFlag.equals("+") && parentFlag.equals("+")) ? "+" : "-";
+                NationJoinCustomerJoinOrderRows joinResult = new NationJoinCustomerJoinOrderRows(
+                        flag,
+                        nationJoinCustomerValue.getC_custKey(),
+                        nationJoinCustomerValue.getC_nationKey(),
+                        nationJoinCustomerValue.getN_nationKey(),
+                        nationJoinCustomerValue.getN_name(),
+                        parentValue.getO_orderKey(),
+                        parentValue.getO_custKey()
+                );
+                collector.collect(joinResult);
             }
-        }
-
-        // 合并元组
-        for (Integer orderKey : orderIL.keys()){
-            Order orderTuple = orderIL.get(orderKey);
-            String oFlag = orderTuple.getFlag();
-            NationJoinCustomerRows nationJoinCustomerTuple = nationJoinCustomerRows.get(orderTuple.getO_custKey());
-            String ncFlag = nationJoinCustomerTuple.getFlag();
-            String flag = null;
-            if (oFlag.equals("+") && ncFlag.equals("+")){
-                flag = "+";
-            } else {
-                flag = "-";
-            }
-
-            NationJoinCustomerJoinOrderRows joinResult = new NationJoinCustomerJoinOrderRows(
-                    flag,
-                    nationJoinCustomerTuple.getC_custKey(),
-                    nationJoinCustomerTuple.getC_nationKey(),
-                    nationJoinCustomerTuple.getN_nationKey(),
-                    nationJoinCustomerTuple.getN_name(),
-                    orderTuple.getO_orderKey(),
-                    orderTuple.getO_custKey()
-
-            );
-            collector.collect(joinResult);
         }
     }
 
+    // TODO 4 处理parent流
     @Override
     public void processElement2(Order orderValue, CoProcessFunction<NationJoinCustomerRows, Order, NationJoinCustomerJoinOrderRows>.Context context, Collector<NationJoinCustomerJoinOrderRows> collector) throws Exception {
         Integer orderKey = orderValue.getO_orderKey();
@@ -167,32 +160,22 @@ public class NCandOrderImpl extends CoProcessFunction<NationJoinCustomerRows, Or
             orderIN.put(orderKey, orderValue);
         }
 
-        // 合并元组
-        for (Integer key : orderIL.keys()){
-            Order orderTuple = orderIL.get(key);
-            String oFlag = orderTuple.getFlag();
-            NationJoinCustomerRows nationJoinCustomerTuple = nationJoinCustomerRows.get(orderTuple.getO_custKey());
-            String ncFlag = nationJoinCustomerTuple.getFlag();
-            String flag = null;
-            if (oFlag.equals("+") && ncFlag.equals("+")){
-                flag = "+";
-            } else {
-                flag = "-";
-            }
+        // TODO 4.4 parent JOIN child
+        if (orderIL.contains(orderKey)){
+            NationJoinCustomerRows childTuple = nationJoinCustomerRows.get(childKey);
+            String childFlag = childTuple.getFlag();
+            String flag = (childFlag.equals("+") && orderflag.equals("+")) ? "+" : "-";
 
             NationJoinCustomerJoinOrderRows joinResult = new NationJoinCustomerJoinOrderRows(
                     flag,
-                    nationJoinCustomerTuple.getC_custKey(),
-                    nationJoinCustomerTuple.getC_nationKey(),
-                    nationJoinCustomerTuple.getN_nationKey(),
-                    nationJoinCustomerTuple.getN_name(),
-                    orderTuple.getO_orderKey(),
-                    orderTuple.getO_custKey()
-
+                    childTuple.getC_custKey(),
+                    childTuple.getC_nationKey(),
+                    childTuple.getN_nationKey(),
+                    childTuple.getN_name(),
+                    orderValue.getO_orderKey(),
+                    orderValue.getO_custKey()
             );
             collector.collect(joinResult);
         }
     }
-
-
 }

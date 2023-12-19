@@ -50,7 +50,6 @@ public class FinalProcess extends ProcessFunction<FinalJointResults, Tuple4<Stri
                     Tuple4<String, String, Integer, Double> t = Tuple4.of(outKey.getField(0), outKey.getField(1), outKey.getField(2), output.get(outKey));
                     collector.collect(t);
                 }
-
             }
             // 原来删掉了某个元组，现在又insert一个
             else if (oldFlag.equals("-") && flag.equals("+")) {
@@ -94,10 +93,5 @@ public class FinalProcess extends ProcessFunction<FinalJointResults, Tuple4<Stri
                 }
             }
         }
-
-//        for (Tuple key : output.keys()){
-//            Tuple4<String, String, Integer, Double> t = Tuple4.of(key.getField(0), key.getField(1), key.getField(2), output.get(key));
-//            collector.collect(t);
-//        }
     }
 }

@@ -52,7 +52,8 @@ public class NationAndSupplierImpl extends CoProcessFunction<Nation, Supplier, N
         String childFlag = childValue.getFlag();
 
         // TODO 3.1 更新 I(L(R))
-        // 更新I(L(R)), 如果是insert, 则 input 进 childIL, 否则，先remove再input
+        // 更新I(L(R)), 如果是insert, 则 input 进 childIL, 如果是delete，先remove再input,相当于把它的flag更新为“-”
+        // 如果childIL中包含该key, 说明新来的tuple是delete的，先remove,再Put
         if (childIL.contains(childKey)){
                 childIL.remove(childKey);
                 childIL.put(childKey, childValue);
@@ -62,13 +63,14 @@ public class NationAndSupplierImpl extends CoProcessFunction<Nation, Supplier, N
         //System.out.println(childKey + " : " + childIL.get(childKey));
 
         // TODO 3.2 来了新数据，应同步更新 parent relation的 counter和 I(L(R)), 利用I(R, Rc)查找 parent 中对应的元组
-        List<Tuple> parentTuples = parentIRRc.get(childKey);
+        List<Tuple> parentTuples = parentIRRc.get(childKey); // 通过childKey查找到的parentTuple是一个List
         if (parentTuples != null){
             for (Tuple tuple : parentTuples){
-                Integer key = tuple.getField(0);
+                Integer key = tuple.getField(0); //第1个元素是parent的key
 
                 // TODO 3.2.1 更新 parent 的 counter
                 Integer num = parentCounter.get(key);
+                // 如果num<1, 说明parent的此tuple是non-live的，应该让其变成alive
                 if (num < 1) {
                     parentCounter.remove(key);
                     parentCounter.put(key, 1);
@@ -76,6 +78,7 @@ public class NationAndSupplierImpl extends CoProcessFunction<Nation, Supplier, N
                 }
                 // TODO 3.2.2 更新 parent 的 I(L(R))
                 Integer newNum = parentCounter.get(key);
+                // parentIL中包含该key,说明新来的key有可能是delete的,flag为-,那么更新parentIL,先remove,再input
                 if (parentIL.contains(key)){
                     parentIL.remove(key);
                     parentIL.put(key, parentIR.get(key));

@@ -3,6 +3,7 @@ package hk.ust.functions;
 import hk.ust.bean.Customer;
 import hk.ust.bean.Nation;
 import hk.ust.bean.NationJoinCustomerRows;
+import hk.ust.bean.NationJoinSupplierRows;
 import org.apache.flink.api.common.state.MapState;
 import org.apache.flink.api.common.state.MapStateDescriptor;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
@@ -49,6 +50,7 @@ public class NationAndCustomerImpl extends CoProcessFunction<Nation, Customer, N
     @Override
     public void processElement1(Nation nationValue, CoProcessFunction<Nation, Customer, NationJoinCustomerRows>.Context context, Collector<NationJoinCustomerRows> collector) throws Exception {
         Integer nationKey = nationValue.getN_nationKey();
+        String childFlag = nationValue.getFlag();
 
         // TODO 3.1 更新 I(L(R))
         // 更新I(L(R)), 如果是insert, 则 input 进 nationIL, 否则，先remove再input
@@ -65,6 +67,8 @@ public class NationAndCustomerImpl extends CoProcessFunction<Nation, Customer, N
         if (customerTuples != null){
             for (Tuple tuple : customerTuples){
                 Integer key = tuple.getField(0);
+
+                // TODO 3.2.1 更新 parent 的 counter
                 Integer num = customerCounter.get(key);
                 if (num < 1) {
                     customerCounter.remove(key);
@@ -72,7 +76,7 @@ public class NationAndCustomerImpl extends CoProcessFunction<Nation, Customer, N
                     //System.out.println(key + " : " + customerCounter.get(key));
                 }
 
-                // 根据更新后的counter, 更新parent relation的I(L(R))
+                // TODO 3.2.2 更新 parent 的 I(L(R))
                 Integer newNum = customerCounter.get(key);
                 if (customerIL.contains(key)){
                     customerIL.remove(key);
@@ -83,31 +87,23 @@ public class NationAndCustomerImpl extends CoProcessFunction<Nation, Customer, N
                     //System.out.println(key + " : " + customerIL.get(key));
                 }
                 // System.out.println(key+ " : "+customerCounter.get(key));
+
+                // TODO 3.2.3 parent JOIN child using I(R, Rc)
+                Customer parentValue = customerIL.get(key);
+                String parentFlag = parentValue.getFlag();
+                String flag = (childFlag.equals("+") && parentFlag.equals("+")) ? "+" : "-";
+
+                NationJoinCustomerRows nationJoinCustomerRows = new NationJoinCustomerRows(
+                        flag,
+                        parentValue.getC_custKey(),
+                        parentValue.getC_nationKey(),
+                        nationValue.getN_nationKey(),
+                        nationValue.getN_name()
+                );
+                collector.collect(nationJoinCustomerRows);
             }
         }
 
-        // 合并元组
-        for (Integer cust : customerIL.keys()){
-            Customer customerTuple = customerIL.get(cust);
-            String cFlag = customerTuple.getFlag();
-            Nation nationTuple = nationIL.get(customerTuple.getC_nationKey());
-            String nFlag = nationTuple.getFlag();
-            String flag = null;
-            if (cFlag.equals("+") && nFlag.equals("+")){
-                flag = "+";
-            } else {
-                flag = "-";
-            }
-
-            NationJoinCustomerRows nationJoinCustomerRows = new NationJoinCustomerRows(
-                    flag,
-                    customerTuple.getC_custKey(),
-                    customerTuple.getC_nationKey(),
-                    nationTuple.getN_nationKey(),
-                    nationTuple.getN_name()
-            );
-            collector.collect(nationJoinCustomerRows);
-        }
     }
     // TODO 4 处理parent流
     @Override
@@ -166,27 +162,19 @@ public class NationAndCustomerImpl extends CoProcessFunction<Nation, Customer, N
             customerIN.put(customerKey, customerValue);
         }
 
-        // 合并元组
-        for (Integer cust : customerIL.keys()){
-            Customer customerTuple = customerIL.get(cust);
-            String cFlag = customerTuple.getFlag();
-            Nation nationTuple = nationIL.get(customerTuple.getC_nationKey());
-            String nFlag = nationTuple.getFlag();
-            String flag = null;
-            if (cFlag.equals("+") && nFlag.equals("+")){
-                flag = "+";
-            } else {
-                flag = "-";
-            }
+        // TODO 4.4 parent JOIN child
+        if (customerIL.contains(customerKey)){
+            Nation childTuple = nationIL.get(customerValue.getC_nationKey());
+            String childFlag = childTuple.getFlag();
+            String flag = (childFlag.equals("+") && customerflag.equals("+")) ? "+" : "-";
 
             NationJoinCustomerRows nationJoinCustomerRows = new NationJoinCustomerRows(
                     flag,
-                    customerTuple.getC_custKey(),
-                    customerTuple.getC_nationKey(),
-                    nationTuple.getN_nationKey(),
-                    nationTuple.getN_name()
+                    customerValue.getC_custKey(),
+                    customerValue.getC_nationKey(),
+                    childTuple.getN_nationKey(),
+                    childTuple.getN_name()
             );
-
             collector.collect(nationJoinCustomerRows);
         }
     }

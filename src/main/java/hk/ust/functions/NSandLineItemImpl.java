@@ -183,7 +183,5 @@ public class NSandLineItemImpl extends CoProcessFunction<NationJoinSupplierRows,
             );
             collector.collect(jointResults);
         }
-
-
     }
 }
